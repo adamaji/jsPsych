@@ -30,6 +30,13 @@ jsPsych.plugins["serial-reaction-time-mouse"] = (function() {
         default: [[1,1,1,1]],
         description: 'This array represents the grid of boxes shown on the screen.'
       },
+      grid_content: {
+        type: jsPsych.plugins.parameterType.HTML_STRING,
+        pretty_name: 'Grid content',
+        array: true,
+        default: null,
+        description: 'This array represents optional HTML content for each box in the grid.'
+      },
       grid_square_size: {
         type: jsPsych.plugins.parameterType.INT,
         pretty_name: 'Grid square size',
@@ -78,6 +85,12 @@ jsPsych.plugins["serial-reaction-time-mouse"] = (function() {
         default: null,
         description: 'Any content here will be displayed below the stimulus'
       },
+      audio_prompt: {
+        type: jsPsych.plugins.parameterType.AUDIO,
+        pretty_name: 'Audio prompt',
+        default: null,
+        description: 'Optional audio prompt to play at the beginning of the trial.'
+      }
     }
   }
 
@@ -90,8 +103,23 @@ jsPsych.plugins["serial-reaction-time-mouse"] = (function() {
       column: null
     }
 
+    // set up audio if given
+    var play_audio = trial.audio_prompt != null;
+    if (play_audio) {
+        var context = jsPsych.pluginAPI.audioContext();
+        if(context !== null){
+          var source = context.createBufferSource();
+          source.buffer = jsPsych.pluginAPI.getAudioBuffer(trial.audio_prompt);
+          source.connect(context.destination);
+        } else {
+          var audio = jsPsych.pluginAPI.getAudioBuffer(trial.audio_prompt);
+          audio.currentTime = 0;
+        }
+    }
+
+
     // display stimulus
-    var stimulus = this.stimulus(trial.grid, trial.grid_square_size);
+    var stimulus = this.stimulus(trial.grid, trial.grid_content, trial.grid_square_size);
     display_element.innerHTML = stimulus;
 
 
@@ -149,6 +177,18 @@ jsPsych.plugins["serial-reaction-time-mouse"] = (function() {
       // kill any remaining setTimeout handlers
       jsPsych.pluginAPI.clearAllTimeouts();
 
+      // stop the audio file if it is playing
+      // remove end event listeners if they exist
+      if (play_audio){
+          if(context !== null){
+            source.stop();
+            source.onended = function() { }
+          } else {
+            audio.pause();
+            audio.removeEventListener('ended', end_trial);
+          }
+      }
+
       // gather the data to store for the trial
       var trial_data = {
         "rt": response.rt,
@@ -178,9 +218,19 @@ jsPsych.plugins["serial-reaction-time-mouse"] = (function() {
       }
     };
 
+    // start audio
+    if (play_audio) {
+        if(context !== null){
+          startTime = context.currentTime;
+          source.start(startTime);
+        } else {
+          audio.play();
+        }
+    }
+
   };
 
-  plugin.stimulus = function(grid, square_size, target, target_color, labels) {
+  plugin.stimulus = function(grid, grid_content, square_size, target, target_color, labels) {
     var stimulus = "<div id='jspsych-serial-reaction-time-stimulus' style='margin:auto; display: table; table-layout: fixed; border-spacing:"+square_size/4+"px'>";
     for(var i=0; i<grid.length; i++){
       stimulus += "<div class='jspsych-serial-reaction-time-stimulus-row' style='display:table-row;'>";
@@ -189,7 +239,7 @@ jsPsych.plugins["serial-reaction-time-mouse"] = (function() {
 
         stimulus += "<div class='"+classname+"' id='jspsych-serial-reaction-time-stimulus-cell-"+i+"-"+j+"' "+
           "data-row="+i+" data-column="+j+" "+
-          "style='width:"+square_size+"px; height:"+square_size+"px; display:table-cell; vertical-align:middle; text-align: center; cursor: pointer; font-size:"+square_size/2+"px;";
+          "style='width:"+square_size+"px; height:"+square_size+"px; float: left; margin-left:"+square_size/4+"px; overflow: hidden; line-height:" + square_size +"px;";
         if(grid[i][j] == 1){
           stimulus += "border: 2px solid black;"
         }
@@ -197,6 +247,11 @@ jsPsych.plugins["serial-reaction-time-mouse"] = (function() {
           stimulus += "background-color: "+target_color+";"
         }
         stimulus += "'>";
+        if (grid_content !== null){
+          if (grid[i][j] == 1 && grid_content[i][j] !== null){
+            stimulus += grid_content[i][j];
+          }
+        }
         if(typeof labels !=='undefined' && labels[i][j] !== false){
           stimulus += labels[i][j]
         }
